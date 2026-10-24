@@ -171,6 +171,8 @@ main{padding-block:16px 110px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--ink);color:var(--white);padding:10px 16px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px);text-align:center}
 
 .band{padding-top:calc(20px + env(safe-area-inset-top,0px))}
+.cal .d.add{cursor:pointer}
+.cal .d.add::after{content:"+";position:absolute;right:5px;bottom:2px;font-size:14px;color:var(--line)}
 .pinrow{display:flex;gap:8px;margin-top:8px}
 .pinrow input{flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:20px;letter-spacing:.4em;text-align:center;color:var(--ink);background:var(--paper)}
 .ownertag{display:inline-block;font-size:12px;background:var(--sun);color:var(--ink);padding:2px 8px;border-radius:8px;margin-left:6px;vertical-align:middle}
@@ -410,6 +412,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       const k = ymd(viewY, viewM+1, d);
       const cls = 'd' + (k === c.today ? ' today' : '') + (k > c.today ? ' future' : '');
       if (checkins[k]) h += '<button type="button" class="' + cls + '" data-day="' + k + '" aria-label="' + (viewM+1) + '월 ' + d + '일 인증샷 보기"><span class="n">' + d + '</span><span class="stamp">' + stampHTML(dayIdx[k]) + '</span></button>';
+      else if (isOwner && k < c.today) h += '<label for="photoInput" role="button" tabindex="0" class="' + cls + ' add" data-past="' + k + '" aria-label="' + (viewM+1) + '월 ' + d + '일 인증 올리기"><span class="n">' + d + '</span></label>';
       else h += '<div class="' + cls + '"><span class="n">' + d + '</span></div>';
     }
     $('cal').innerHTML = h;
@@ -538,10 +541,14 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     const t = todayKey();
     if (checkins[t]) { e.preventDefault(); openDay(t); return; }
     if (!loaded) { e.preventDefault(); toast('기록을 불러오는 중이에요. 잠시 뒤에 다시 눌러 주세요'); loadAll(); return; }
+    pendingDate = null;
     $('photoInput').value = '';
   });
   $('ctaBtn').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('ctaBtn').click(); } });
+  let pendingDate = null;
   $('photoInput').onchange = async e => {
+    const forDay = (pendingDate && pendingDate < todayKey()) ? pendingDate : null;
+    pendingDate = null;
     const f = e.target.files && e.target.files[0]; if (!f) return;
     let data = null;
     try { data = await shrink(f, 900, 'image/jpeg', 190000); } catch (err) {}
@@ -550,7 +557,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     const sm = (toMin(nowHm) - 30 + 1440) % 1440;
     const defEnd = nowHm, defStart = pad(Math.floor(sm / 60)) + ':' + pad(sm % 60);
     openSheet(
-      '<h3>오늘 운동 인증</h3><img class="photo" alt="고른 인증샷" src="' + data + '">' +
+      '<h3>' + (forDay ? Number(forDay.slice(5,7)) + '월 ' + Number(forDay.slice(8)) + '일 운동 인증' : '오늘 운동 인증') + '</h3><img class="photo" alt="고른 인증샷" src="' + data + '">' +
       '<div class="trow"><div><label for="tStart">시작한 시간</label><input type="time" id="tStart" value="' + defStart + '"></div><div><label for="tEnd">끝난 시간</label><input type="time" id="tEnd" value="' + defEnd + '"></div></div>' +
       '<p class="tinfo" id="tInfo"></p>' +
       '<label for="memo">무슨 운동 했어?</label><textarea id="memo" maxlength="80" placeholder="줄넘기 300개 했어요"></textarea>' +
@@ -571,13 +578,16 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           if (!info()) { $('tInfo').scrollIntoView({block: 'center'}); return; }
           const btn = $('upGo'); btn.disabled = true; btn.textContent = '올리는 중…';
           try {
-            const res = await rpc('wc_submit', {p_note: $('memo').value.trim().slice(0, 80), p_start: $('tStart').value, p_end: $('tEnd').value, p_img: data});
+            const args = {p_note: $('memo').value.trim().slice(0, 80), p_start: $('tStart').value, p_end: $('tEnd').value, p_img: data};
+            const res = forDay ? await ownerCall('wc_submit_past', Object.assign({p_d: forDay}, args)) : await rpc('wc_submit', args);
             if (res && res.d) photoCache[res.d] = data;
             closeSheet(); celebrate(); loadAll();
           } catch (err) {
             btn.disabled = false; btn.textContent = '도장 쾅!';
             const m = $('upErr'); m.hidden = false;
-            m.textContent = err.code === 'already_done' ? '오늘은 이미 도장을 받았어! 내일 또 올려 줘.'
+            m.textContent = err.code === 'already_done' ? (forDay ? '그날은 이미 도장이 있어요.' : '오늘은 이미 도장을 받았어! 내일 또 올려 줘.')
+              : err.code === 'bad_date' ? '오늘이나 미래 날짜는 여기서 올릴 수 없어요.'
+              : /wc_submit_past|function|schema/i.test(err.message || '') && forDay ? 'Supabase에 지난 날짜 설정이 아직 없어요. 추가 SQL을 실행해 주세요.'
               : err.code === 'too_short' ? '30분 이상 해야 도장을 받을 수 있어!'
               : err.code === 'bad_image' ? '이 사진은 올릴 수 없어요. 다른 사진으로 해 볼까?'
               : '올리지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.';
@@ -657,7 +667,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         };
       });
   }
-  $('cal').addEventListener('click', e => { const b = e.target.closest('[data-day]'); if (b) openDay(b.dataset.day); });
+  $('cal').addEventListener('click', e => {
+    const b = e.target.closest('[data-day]'); if (b) { openDay(b.dataset.day); return; }
+    const a = e.target.closest('[data-past]'); if (a) { pendingDate = a.dataset.past; $('photoInput').value = ''; }
+  });
 
   /* ---------- owner: payout ---------- */
   $('payBtn').onclick = () => {
@@ -709,7 +722,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       return;
     }
     openSheet(
-      '<h3>도장 바꾸기</h3><p class="meta">도장 두 개를 넣으면 운동할 때마다 번갈아 찍혀요. 배경이 투명한 PNG가 제일 예뻐요.</p>' +
+      '<h3>도장 바꾸기</h3><p class="meta">깜빡한 날은 달력의 빈 지난 날짜(+ 표시)를 누르면 올릴 수 있어요.</p><p class="meta">도장 두 개를 넣으면 운동할 때마다 번갈아 찍혀요. 배경이 투명한 PNG가 제일 예뻐요.</p>' +
       '<div class="stats" style="margin-top:12px">' +
       [0,1].map(n => '<div class="stat" style="text-align:center"><p class="lab" style="justify-content:center">도장 ' + (n+1) + '</p><div class="stamp-prev" style="width:72px;height:72px;margin:8px auto">' + slotHTML(n) + '</div>' +
         '<label class="btn" for="stampInput" data-slot="' + n + '" style="display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--white);margin:0">그림 고르기</label>' +
