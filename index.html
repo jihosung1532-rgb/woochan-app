@@ -69,11 +69,11 @@ main{padding-block:16px 110px}
 .cal .h{text-align:center;font-size:12px;color:var(--sky-deep);padding-bottom:2px}
 .cal .h.sun{color:#D2563C}
 .cal .d{aspect-ratio:1;border-radius:12px;position:relative;background:var(--white);border:1px solid var(--line);color:var(--sky-deep);font-size:12px;padding:0}
-.cal .d .n{position:absolute;top:3px;left:5px;z-index:1;font-variant-numeric:tabular-nums}
+.cal .d .n{position:absolute;top:3px;left:5px;z-index:1;font-weight:700;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff;font-variant-numeric:tabular-nums}
 .cal .d.e{background:transparent;border:none}
 .cal .d.future{opacity:.55}
 .cal .d.today{border:2px dashed var(--sun-deep);background:var(--sun-pale);color:var(--ink)}
-.cal .d .stamp{position:absolute;left:50%;top:65%;width:70%;height:70%;transform:translate(-50%,-50%) rotate(-8deg);pointer-events:none}
+.cal .d .stamp{position:absolute;left:52%;top:56%;width:92%;height:92%;transform:translate(-50%,-50%) rotate(-8deg);pointer-events:none}
 .cal .d .stamp img,.cal .d .stamp svg{width:100%;height:100%;object-fit:contain;display:block}
 .cal button.d{cursor:pointer}
 .cal button.d:active{transform:scale(.95)}
@@ -307,7 +307,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
   let pin = ''; try { pin = localStorage.getItem(PIN_KEY) || ''; } catch (e) {}
   let isOwner = false;
   let loaded = false;
-  let checkins = {}, payouts = [], comments = {}, stamps = [null, null];
+  let checkins = {}, payouts = [], comments = {}, stamps = [null, null, null];
   const photoCache = {}, photoPending = {}, drafts = {};
   const sn = seoulNow();
   let viewY = sn.y, viewM = sn.m - 1;
@@ -316,8 +316,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
   function stampSrc(i){
     const have = stamps.filter(Boolean);
     if (!have.length) return null;
-    if (have.length === 1) return have[0];
-    return stamps[i % 2];
+    return have[i % have.length];
   }
   function stampHTML(i){ const u = stampSrc(i || 0); return u ? '<img src="' + u + '" alt="">' : DEF_STAMP; }
   function slotHTML(n){ return stamps[n] ? '<img src="' + stamps[n] + '" alt="">' : DEF_STAMP; }
@@ -338,7 +337,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           sbGet('wc_checkins?select=d,note,t_start,t_end,mins,created_at&order=d.asc'),
           sbGet('wc_comments?select=d,body'),
           sbGet('wc_payouts?select=amount'),
-          sbGet('wc_settings?select=k,v&k=in.(stamp,stamp2)')
+          sbGet('wc_settings?select=k,v&k=in.(stamp,stamp2,stamp3)')
         ]);
         const next = {};
         ck.forEach(r => { next[r.d] = {note: r.note || '', start: r.t_start || '', end: r.t_end || '', mins: r.mins || 0, at: r.created_at ? Date.parse(r.created_at) : 0}; });
@@ -347,7 +346,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         payouts = po.map(r => ({amount: Number(r.amount) || 0}));
         const ok = v => (typeof v === 'string' && IMG_OK.test(v)) ? v : null;
         const f = k => { const r = st.find(x => x.k === k); return r ? ok(r.v) : null; };
-        stamps = [f('stamp'), f('stamp2')];
+        stamps = [f('stamp'), f('stamp2'), f('stamp3')];
         loaded = true; setNote('');
       } catch (e) {
         setNote(loaded ? '' : '기록을 불러오지 못했어요. 인터넷 연결을 확인하고 화면을 다시 열어 주세요.');
@@ -765,12 +764,12 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       return;
     }
     openSheet(
-      '<h3>도장 바꾸기</h3><p class="meta">깜빡한 날은 달력의 빈 지난 날짜(+ 표시)를 누르면 올릴 수 있어요.</p><p class="meta">도장 두 개를 넣으면 운동할 때마다 번갈아 찍혀요. 배경이 투명한 PNG가 제일 예뻐요.</p>' +
-      '<div class="stats" style="margin-top:12px">' +
-      [0,1].map(n => '<div class="stat" style="text-align:center"><p class="lab" style="justify-content:center">도장 ' + (n+1) + '</p><div class="stamp-prev" style="width:72px;height:72px;margin:8px auto">' + slotHTML(n) + '</div>' +
-        '<label class="btn" for="stampInput" data-slot="' + n + '" style="display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--white);margin:0">그림 고르기</label>' +
-        (stamps[n] ? '<button type="button" class="btn ghost" data-clear="' + n + '" style="width:100%;margin-top:6px">비우기</button>' : '') + '</div>').join('') +
-      '</div><p class="meta">두 칸 다 비우면 기본 별 도장이 찍혀요.</p>' +
+      '<h3>도장 바꾸기</h3><p class="meta">깜빡한 날은 달력의 빈 지난 날짜(+ 표시)를 누르면 올릴 수 있어요.</p><p class="meta">넣은 도장들이 운동할 때마다 차례로 번갈아 찍혀요. 배경이 투명한 PNG가 제일 예뻐요.</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px">' +
+      [0,1,2].map(n => '<div class="stat" style="text-align:center;padding:10px 6px"><p class="lab" style="justify-content:center">도장 ' + (n+1) + '</p><div class="stamp-prev" style="width:60px;height:60px;margin:6px auto 8px">' + slotHTML(n) + '</div>' +
+        '<label class="btn" for="stampInput" data-slot="' + n + '" style="display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--white);margin:0;padding:8px 4px;font-size:13px">고르기</label>' +
+        (stamps[n] ? '<button type="button" class="btn ghost" data-clear="' + n + '" style="width:100%;margin-top:6px;padding:8px 4px;font-size:13px">비우기</button>' : '') + '</div>').join('') +
+      '</div><p class="meta">모든 칸을 비우면 기본 별 도장이 찍혀요.</p>' +
       '<div class="acts"><button type="button" class="btn ghost" id="lockBtn">보호자 모드 끄기</button><button type="button" class="btn ghost" id="stClose">닫기</button></div>',
       () => {
         $('stClose').onclick = closeSheet;
@@ -782,11 +781,11 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
   let pickSlot = 0;
   async function saveStamp(n, data){
     try {
-      await ownerCall(n === 0 ? 'wc_set_stamp' : 'wc_set_stamp2', {p_img: data});
+      await ownerCall(['wc_set_stamp', 'wc_set_stamp2', 'wc_set_stamp3'][n], {p_img: data});
       stamps[n] = data; closeSheet(); render(); toast(data ? '도장 ' + (n+1) + '을 바꿨어요' : '도장 ' + (n+1) + '을 비웠어요');
     } catch (e) {
       if (e.code === 'wrong_pin') return;
-      toast(/wc_set_stamp2|function|schema/i.test(e.message || '') ? 'Supabase에 도장 2 설정이 아직 없어요. 추가 SQL을 실행해 주세요' : '바꾸지 못했어요. 다시 해 주세요');
+      toast(/wc_set_stamp|function|schema/i.test(e.message || '') ? 'Supabase에 도장 ' + (n+1) + ' 설정이 아직 없어요. 추가 SQL을 실행해 주세요' : '바꾸지 못했어요. 다시 해 주세요');
     }
   }
   $('stampInput').onchange = async e => {
